@@ -90,7 +90,9 @@ video{display:none}
   <div class="logo">Form<span>Fit</span></div>
   <div class="poc-badge">Coaching PoC</div>
 </header>
+
 <div id="host-notice"><strong>Open via web server — not as a downloaded file</strong>Camera needs HTTPS.</div>
+
 <div id="setup-screen" class="screen active">
   <div class="field"><label>Anthropic API Key <span class="saved-badge" id="ak-saved" style="display:none">Saved</span></label><input type="password" id="anthropic-key" placeholder="sk-ant-..." autocomplete="off"/></div>
   <div class="field"><label>ElevenLabs API Key <span class="saved-badge" id="ek-saved" style="display:none">Saved</span></label><input type="password" id="elevenlabs-key" placeholder="Your ElevenLabs key..." autocomplete="off"/></div>
@@ -101,6 +103,7 @@ video{display:none}
   <div><div class="section-title">Monitor Joints</div><div class="joints-grid" id="joints-grid"></div></div>
   <button id="start-btn" onclick="startSession()">Start Camera</button>
 </div>
+
 <div id="session-screen" class="screen">
   <div id="camera-wrap">
     <video id="video" playsinline></video>
@@ -119,32 +122,245 @@ video{display:none}
   <div id="coaching-log"><div class="log-empty" id="log-empty">Hold still ~3 sec to set baseline.<br/>Then move to trigger cues.</div></div>
   <button id="end-btn" onclick="endSession()">End Session</button>
 </div>
+
 <script>
 const COOLDOWN_MS=8000,DEVIATION_FRAMES=12,BASELINE_FRAMES=45,ELEVENLABS_MODEL='eleven_turbo_v2',LS_AK='ff_anthropic_key',LS_EK='ff_elevenlabs_key';
-const JOINT_DEFS=[{id:'spine',label:'Spine',landmarks:[11,12,23,24]},{id:'left-knee',label:'L Knee',landmarks:[23,25,27]},{id:'right-knee',label:'R Knee',landmarks:[24,26,28]},{id:'left-elbow',label:'L Elbow',landmarks:[11,13,15]},{id:'right-elbow',label:'R Elbow',landmarks:[12,14,16]},{id:'left-hip',label:'L Hip',landmarks:[11,23,25]},{id:'right-hip',label:'R Hip',landmarks:[12,24,26]},{id:'shoulders',label:'Shoulders',landmarks:[11,12,23]}];
+
+const JOINT_DEFS=[
+  {id:'spine',label:'Spine',landmarks:[11,12,23,24]},
+  {id:'left-knee',label:'L Knee',landmarks:[23,25,27]},
+  {id:'right-knee',label:'R Knee',landmarks:[24,26,28]},
+  {id:'left-elbow',label:'L Elbow',landmarks:[11,13,15]},
+  {id:'right-elbow',label:'R Elbow',landmarks:[12,14,16]},
+  {id:'left-hip',label:'L Hip',landmarks:[11,23,25]},
+  {id:'right-hip',label:'R Hip',landmarks:[12,24,26]},
+  {id:'shoulders',label:'Shoulders',landmarks:[11,12,23]}
+];
+
+// MediaPipe landmark indices 0-10 are all face points — skip dots for these
+const FACE_LANDMARK_IDS = new Set([0,1,2,3,4,5,6,7,8,9,10]);
+
 let sessionActive=false,lastCueTime=0,cueCount=0,frameCount=0,deviationStreak=0,sessionStart=null,timerInterval=null,isSpeaking=false,baselineLandmarks=null,baselineFrames=0,baselineReady=false;
 let activeJoints=new Set(JOINT_DEFS.map(j=>j.id));
+
+// AudioContext created once on user tap (satisfies mobile autoplay policy)
+let sharedAudioCtx=null;
+
 const canvas=document.getElementById('canvas'),ctx=canvas.getContext('2d');
+
 if(location.protocol==='file:'||location.protocol==='content:')document.getElementById('host-notice').style.display='block';
-window.addEventListener('DOMContentLoaded',()=>{const ak=localStorage.getItem(LS_AK),ek=localStorage.getItem(LS_EK);if(ak){document.getElementById('anthropic-key').value=ak;document.getElementById('ak-saved').style.display='inline'}if(ek){document.getElementById('elevenlabs-key').value=ek;document.getElementById('ek-saved').style.display='inline'}});
-function clearKeys(){localStorage.removeItem(LS_AK);localStorage.removeItem(LS_EK);document.getElementById('anthropic-key').value='';document.getElementById('elevenlabs-key').value='';document.getElementById('ak-saved').style.display='none';document.getElementById('ek-saved').style.display='none'}
-(function(){const grid=document.getElementById('joints-grid');JOINT_DEFS.forEach(j=>{const lbl=document.createElement('label');lbl.className='joint-toggle active';lbl.innerHTML='<input type="checkbox" checked/>'+j.label;lbl.querySelector('input').addEventListener('change',e=>{e.target.checked?(activeJoints.add(j.id),lbl.classList.add('active')):(activeJoints.delete(j.id),lbl.classList.remove('active'))});grid.appendChild(lbl)})})();
-async function startSession(){const ak=document.getElementById('anthropic-key').value.trim(),ek=document.getElementById('elevenlabs-key').value.trim();if(!ak||!ek)return alert('Enter both API keys first.');localStorage.setItem(LS_AK,ak);localStorage.setItem(LS_EK,ek);window._ak=ak;window._ek=ek;document.getElementById('start-btn').disabled=true;document.getElementById('setup-screen').classList.remove('active');document.getElementById('session-screen').classList.add('active');document.getElementById('coaching-log').innerHTML='<div class="log-empty" id="log-empty">Hold still ~3 sec to set baseline.<br/>Then move to trigger cues.</div>';addLog('Initialising MediaPipe...','system');try{await initPose();sessionActive=true;sessionStart=Date.now();timerInterval=setInterval(updateTimer,1000);setStatus('Calibrating...','');addLog('Camera live. Hold still to set baseline.','system')}catch(e){addLog('Camera failed: '+e.message,'error');endSession()}}
-function endSession(){sessionActive=false;clearInterval(timerInterval);document.getElementById('session-screen').classList.remove('active');document.getElementById('setup-screen').classList.add('active');document.getElementById('start-btn').disabled=false;baselineLandmarks=null;baselineFrames=0;baselineReady=false;frameCount=0;cueCount=0;deviationStreak=0;isSpeaking=false;['stat-frames','stat-cues'].forEach(id=>document.getElementById(id).textContent='0');document.getElementById('stat-dev').textContent='-';document.getElementById('stat-time').textContent='0:00'}
-async function initPose(){const video=document.getElementById('video'),pose=new Pose({locateFile:f=>'https://cdn.jsdelivr.net/npm/@mediapipe/pose/'+f});pose.setOptions({modelComplexity:1,smoothLandmarks:true,enableSegmentation:false,minDetectionConfidence:.6,minTrackingConfidence:.6});pose.onResults(onPoseResults);const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:640},height:{ideal:480}},audio:false});video.srcObject=stream;await new Promise(r=>{video.onloadedmetadata=r});video.play();canvas.width=video.videoWidth||640;canvas.height=video.videoHeight||480;new Camera(video,{onFrame:async()=>{if(sessionActive)await pose.send({image:video})},width:640,height:480}).start()}
-function onPoseResults(results){if(!sessionActive)return;frameCount++;document.getElementById('stat-frames').textContent=frameCount;ctx.save();ctx.clearRect(0,0,canvas.width,canvas.height);results.image&&ctx.drawImage(results.image,0,0,canvas.width,canvas.height);if(!results.poseLandmarks){setStatus('No pose','error-state');return ctx.restore()}const lm=results.poseLandmarks;drawSkeleton(lm);if(!baselineReady){baselineFrames++;setStatus('Calibrating '+Math.min(100,Math.round(baselineFrames/BASELINE_FRAMES*100))+'%','active');baselineFrames===1?baselineLandmarks=lm.map(p=>({...p})):baselineLandmarks=baselineLandmarks.map((b,i)=>({x:b.x*.9+lm[i].x*.1,y:b.y*.9+lm[i].y*.1,z:b.z*.9+lm[i].z*.1,visibility:lm[i].visibility}));if(baselineFrames>=BASELINE_FRAMES){baselineReady=true;setStatus('Monitoring','active');addLog('Baseline set - move to test cues.','system')}return ctx.restore()}const threshold=parseFloat(document.getElementById('threshold').value),deviation=computeDeviation(lm,baselineLandmarks);updateDevUI(deviation,threshold);deviation>threshold?(deviationStreak++,Date.now()-lastCueTime>COOLDOWN_MS&&deviationStreak>=DEVIATION_FRAMES&&!isSpeaking&&(lastCueTime=Date.now(),deviationStreak=0,fireCue(lm,deviation))):deviationStreak=Math.max(0,deviationStreak-1);ctx.restore()}
-function getAngle(lm,indices){const pts=indices.map(i=>lm[i]);if(pts.some(p=>!p||(p.visibility||0)<.4))return null;const[a,b,c]=pts,v1={x:a.x-b.x,y:a.y-b.y},v2={x:c.x-b.x,y:c.y-b.y},dot=v1.x*v2.x+v1.y*v2.y,mag=Math.sqrt(v1.x**2+v1.y**2)*Math.sqrt(v2.x**2+v2.y**2);return mag===0?null:Math.acos(Math.min(1,Math.max(-1,dot/mag)))}
-function computeDeviation(cur,base){let total=0,count=0;JOINT_DEFS.forEach(j=>{if(activeJoints.has(j.id)){const a1=getAngle(cur,j.landmarks),a2=getAngle(base,j.landmarks);null!==a1&&null!==a2&&(total+=Math.abs(a1-a2)/Math.PI,count++)}});return count>0?total/count:0}
-function worstJoint(cur,base){let worst=null,worstDev=-1;JOINT_DEFS.forEach(j=>{if(activeJoints.has(j.id)){const a1=getAngle(cur,j.landmarks),a2=getAngle(base,j.landmarks);if(null!==a1&&null!==a2){const d=Math.abs(a1-a2)/Math.PI;d>worstDev&&(worstDev=d,worst=j)}}});return worst?worst.label:'overall posture'}
-async function fireCue(lm,deviation){cueCount++;document.getElementById('stat-cues').textContent=cueCount;const joint=worstJoint(lm,baselineLandmarks),pct=Math.round(deviation*100);addLog('Deviation '+pct+'% - '+joint+'. Generating cue...','system');let cueText;try{cueText=await generateCue(joint,pct)}catch(e){return addLog('Claude error: '+e.message,'error'),void(isSpeaking=false)}const logEl=addLog('"'+cueText+'"','speaking');try{await speakCue(cueText,logEl)}catch(e){addLog('TTS error: '+e.message,'error');logEl.classList.replace('speaking','coaching');isSpeaking=false}}
-async function generateCue(joint,pct){const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':window._ak,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:80,system:'You are a calm encouraging British female fitness coach. Keep cues SHORT max 10 words. Direct specific no filler. Examples: Keep your back flat. Straighten those knees.',messages:[{role:'user',content:'Users '+joint+' is '+pct+'% off target. One short corrective cue.'}]})});if(!res.ok){const e=await res.json();throw new Error(e.error?.message||res.statusText)}return(await res.json()).content[0].text.trim().replace(/^["']|["']$/g,'')}
-async function speakCue(text,logEl){const voiceId=document.getElementById('voice-id').value.trim()||'XB0fDUnXU5powFXDhCwa';isSpeaking=true;document.getElementById('voice-indicator').classList.add('show');document.getElementById('alert-overlay').classList.add('warn');const res=await fetch('https://api.elevenlabs.io/v1/text-to-speech/'+voiceId+'/stream',{method:'POST',headers:{'Content-Type':'application/json','xi-api-key':window._ek},body:JSON.stringify({text,model_id:ELEVENLABS_MODEL,voice_settings:{stability:.55,similarity_boost:.8,style:.15,use_speaker_boost:true}})});if(!res.ok){isSpeaking=false;document.getElementById('voice-indicator').classList.remove('show');document.getElementById('alert-overlay').classList.remove('warn');const e=await res.json();throw new Error(e.detail?.message||res.statusText)}const audioCtx=new(window.AudioContext||window.webkitAudioContext)(),buf=await audioCtx.decodeAudioData(await res.arrayBuffer()),src=audioCtx.createBufferSource();src.buffer=buf;src.connect(audioCtx.destination);src.onended=()=>{isSpeaking=false;document.getElementById('voice-indicator').classList.remove('show');document.getElementById('alert-overlay').classList.remove('warn');logEl&&(logEl.classList.remove('speaking'),logEl.classList.add('coaching'));audioCtx.close()};src.start(0)}
+
+window.addEventListener('DOMContentLoaded',()=>{
+  const ak=localStorage.getItem(LS_AK),ek=localStorage.getItem(LS_EK);
+  if(ak){document.getElementById('anthropic-key').value=ak;document.getElementById('ak-saved').style.display='inline'}
+  if(ek){document.getElementById('elevenlabs-key').value=ek;document.getElementById('ek-saved').style.display='inline'}
+});
+
+function clearKeys(){
+  localStorage.removeItem(LS_AK);localStorage.removeItem(LS_EK);
+  document.getElementById('anthropic-key').value='';document.getElementById('elevenlabs-key').value='';
+  document.getElementById('ak-saved').style.display='none';document.getElementById('ek-saved').style.display='none';
+}
+
+(function(){
+  const grid=document.getElementById('joints-grid');
+  JOINT_DEFS.forEach(j=>{
+    const lbl=document.createElement('label');
+    lbl.className='joint-toggle active';
+    lbl.innerHTML='<input type="checkbox" checked/>'+j.label;
+    lbl.querySelector('input').addEventListener('change',e=>{
+      e.target.checked?(activeJoints.add(j.id),lbl.classList.add('active')):(activeJoints.delete(j.id),lbl.classList.remove('active'));
+    });
+    grid.appendChild(lbl);
+  });
+})();
+
+async function startSession(){
+  const ak=document.getElementById('anthropic-key').value.trim(),ek=document.getElementById('elevenlabs-key').value.trim();
+  if(!ak||!ek)return alert('Enter both API keys first.');
+  localStorage.setItem(LS_AK,ak);localStorage.setItem(LS_EK,ek);
+  window._ak=ak;window._ek=ek;
+
+  // Create AudioContext HERE — inside a user gesture tap — so mobile unlocks audio
+  if(!sharedAudioCtx){
+    sharedAudioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  }
+  // Resume in case it was suspended (Chrome autoplay policy)
+  if(sharedAudioCtx.state==='suspended')await sharedAudioCtx.resume();
+
+  document.getElementById('start-btn').disabled=true;
+  document.getElementById('setup-screen').classList.remove('active');
+  document.getElementById('session-screen').classList.add('active');
+  document.getElementById('coaching-log').innerHTML='<div class="log-empty" id="log-empty">Hold still ~3 sec to set baseline.<br/>Then move to trigger cues.</div>';
+  addLog('Initialising MediaPipe...','system');
+  try{
+    await initPose();
+    sessionActive=true;sessionStart=Date.now();
+    timerInterval=setInterval(updateTimer,1000);
+    setStatus('Calibrating...','');
+    addLog('Camera live. Hold still to set baseline.','system');
+  }catch(e){
+    addLog('Camera failed: '+e.message,'error');endSession();
+  }
+}
+
+function endSession(){
+  sessionActive=false;clearInterval(timerInterval);
+  document.getElementById('session-screen').classList.remove('active');
+  document.getElementById('setup-screen').classList.add('active');
+  document.getElementById('start-btn').disabled=false;
+  baselineLandmarks=null;baselineFrames=0;baselineReady=false;
+  frameCount=0;cueCount=0;deviationStreak=0;isSpeaking=false;
+  ['stat-frames','stat-cues'].forEach(id=>document.getElementById(id).textContent='0');
+  document.getElementById('stat-dev').textContent='-';
+  document.getElementById('stat-time').textContent='0:00';
+}
+
+async function initPose(){
+  const video=document.getElementById('video');
+  const pose=new Pose({locateFile:f=>'https://cdn.jsdelivr.net/npm/@mediapipe/pose/'+f});
+  pose.setOptions({modelComplexity:1,smoothLandmarks:true,enableSegmentation:false,minDetectionConfidence:.6,minTrackingConfidence:.6});
+  pose.onResults(onPoseResults);
+  const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:640},height:{ideal:480}},audio:false});
+  video.srcObject=stream;
+  await new Promise(r=>{video.onloadedmetadata=r});
+  video.play();
+  canvas.width=video.videoWidth||640;canvas.height=video.videoHeight||480;
+  new Camera(video,{onFrame:async()=>{if(sessionActive)await pose.send({image:video})},width:640,height:480}).start();
+}
+
+function onPoseResults(results){
+  if(!sessionActive)return;
+  frameCount++;document.getElementById('stat-frames').textContent=frameCount;
+  ctx.save();ctx.clearRect(0,0,canvas.width,canvas.height);
+  results.image&&ctx.drawImage(results.image,0,0,canvas.width,canvas.height);
+  if(!results.poseLandmarks){setStatus('No pose','error-state');return ctx.restore();}
+  const lm=results.poseLandmarks;
+  drawSkeleton(lm);
+  if(!baselineReady){
+    baselineFrames++;
+    setStatus('Calibrating '+Math.min(100,Math.round(baselineFrames/BASELINE_FRAMES*100))+'%','active');
+    baselineFrames===1?baselineLandmarks=lm.map(p=>({...p})):baselineLandmarks=baselineLandmarks.map((b,i)=>({x:b.x*.9+lm[i].x*.1,y:b.y*.9+lm[i].y*.1,z:b.z*.9+lm[i].z*.1,visibility:lm[i].visibility}));
+    if(baselineFrames>=BASELINE_FRAMES){baselineReady=true;setStatus('Monitoring','active');addLog('Baseline set - move to test cues.','system');}
+    return ctx.restore();
+  }
+  const threshold=parseFloat(document.getElementById('threshold').value),deviation=computeDeviation(lm,baselineLandmarks);
+  updateDevUI(deviation,threshold);
+  deviation>threshold?(deviationStreak++,Date.now()-lastCueTime>COOLDOWN_MS&&deviationStreak>=DEVIATION_FRAMES&&!isSpeaking&&(lastCueTime=Date.now(),deviationStreak=0,fireCue(lm,deviation))):deviationStreak=Math.max(0,deviationStreak-1);
+  ctx.restore();
+}
+
+function getAngle(lm,indices){
+  const pts=indices.map(i=>lm[i]);
+  if(pts.some(p=>!p||(p.visibility||0)<.4))return null;
+  const[a,b,c]=pts,v1={x:a.x-b.x,y:a.y-b.y},v2={x:c.x-b.x,y:c.y-b.y},dot=v1.x*v2.x+v1.y*v2.y,mag=Math.sqrt(v1.x**2+v1.y**2)*Math.sqrt(v2.x**2+v2.y**2);
+  return mag===0?null:Math.acos(Math.min(1,Math.max(-1,dot/mag)));
+}
+
+function computeDeviation(cur,base){
+  let total=0,count=0;
+  JOINT_DEFS.forEach(j=>{if(activeJoints.has(j.id)){const a1=getAngle(cur,j.landmarks),a2=getAngle(base,j.landmarks);null!==a1&&null!==a2&&(total+=Math.abs(a1-a2)/Math.PI,count++);}});
+  return count>0?total/count:0;
+}
+
+function worstJoint(cur,base){
+  let worst=null,worstDev=-1;
+  JOINT_DEFS.forEach(j=>{if(activeJoints.has(j.id)){const a1=getAngle(cur,j.landmarks),a2=getAngle(base,j.landmarks);if(null!==a1&&null!==a2){const d=Math.abs(a1-a2)/Math.PI;d>worstDev&&(worstDev=d,worst=j);}}});
+  return worst?worst.label:'overall posture';
+}
+
+async function fireCue(lm,deviation){
+  cueCount++;document.getElementById('stat-cues').textContent=cueCount;
+  const joint=worstJoint(lm,baselineLandmarks),pct=Math.round(deviation*100);
+  addLog('Deviation '+pct+'% - '+joint+'. Generating cue...','system');
+  let cueText;
+  try{cueText=await generateCue(joint,pct)}catch(e){return addLog('Claude error: '+e.message,'error'),void(isSpeaking=false);}
+  const logEl=addLog('"'+cueText+'"','speaking');
+  try{await speakCue(cueText,logEl)}catch(e){addLog('TTS error: '+e.message,'error');logEl.classList.replace('speaking','coaching');isSpeaking=false;}
+}
+
+async function generateCue(joint,pct){
+  const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':window._ak,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:80,system:'You are a calm encouraging British female fitness coach. Keep cues SHORT max 10 words. Direct specific no filler. Examples: Keep your back flat. Straighten those knees.',messages:[{role:'user',content:'Users '+joint+' is '+pct+'% off target. One short corrective cue.'}]})});
+  if(!res.ok){const e=await res.json();throw new Error(e.error?.message||res.statusText);}
+  return(await res.json()).content[0].text.trim().replace(/^["']|["']$/g,'');
+}
+
+async function speakCue(text,logEl){
+  const voiceId=document.getElementById('voice-id').value.trim()||'XB0fDUnXU5powFXDhCwa';
+  isSpeaking=true;
+  document.getElementById('voice-indicator').classList.add('show');
+  document.getElementById('alert-overlay').classList.add('warn');
+
+  const res=await fetch('https://api.elevenlabs.io/v1/text-to-speech/'+voiceId+'/stream',{method:'POST',headers:{'Content-Type':'application/json','xi-api-key':window._ek},body:JSON.stringify({text,model_id:ELEVENLABS_MODEL,voice_settings:{stability:.55,similarity_boost:.8,style:.15,use_speaker_boost:true}})});
+  if(!res.ok){
+    isSpeaking=false;
+    document.getElementById('voice-indicator').classList.remove('show');
+    document.getElementById('alert-overlay').classList.remove('warn');
+    const e=await res.json();throw new Error(e.detail?.message||res.statusText);
+  }
+
+  // Reuse the shared AudioContext created during the user-gesture tap
+  const audioCtx=sharedAudioCtx;
+  if(audioCtx.state==='suspended')await audioCtx.resume();
+
+  const buf=await audioCtx.decodeAudioData(await res.arrayBuffer());
+  const src=audioCtx.createBufferSource();
+  src.buffer=buf;src.connect(audioCtx.destination);
+  src.onended=()=>{
+    isSpeaking=false;
+    document.getElementById('voice-indicator').classList.remove('show');
+    document.getElementById('alert-overlay').classList.remove('warn');
+    logEl&&(logEl.classList.remove('speaking'),logEl.classList.add('coaching'));
+    // NOTE: do NOT close sharedAudioCtx here — reused across cues
+  };
+  src.start(0);
+}
+
+// Body skeleton connections only (no face)
 const CONNECTIONS=[[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[24,26],[25,27],[26,28]];
-function drawSkeleton(lm){ctx.lineWidth=2;ctx.strokeStyle='rgba(200,240,75,.65)';ctx.fillStyle='rgba(200,240,75,.9)';CONNECTIONS.forEach(([a,b])=>{const pa=lm[a],pb=lm[b];if(!pa||!pb||(pa.visibility||0)<.4||(pb.visibility||0)<.4)return;ctx.beginPath();ctx.moveTo(pa.x*canvas.width,pa.y*canvas.height);ctx.lineTo(pb.x*canvas.width,pb.y*canvas.height);ctx.stroke()});lm.forEach(p=>{(p.visibility||0)<.4||(ctx.beginPath(),ctx.arc(p.x*canvas.width,p.y*canvas.height,4,0,Math.PI*2),ctx.fill())})}
-function updateDevUI(dev,threshold){const pct=Math.round(dev*100),badge=document.getElementById('deviation-badge');badge.classList.add('show');badge.textContent=pct+'%';document.getElementById('stat-dev').textContent=pct+'%';const cls=dev>threshold?'danger':dev>threshold*.7?'warn':'good';badge.className='show '+cls;document.getElementById('alert-overlay').className=dev>threshold?'danger':dev>threshold*.7?'warn':'';setStatus(dev>threshold?'Deviation!':'Form good',dev>threshold?'warning':'active')}
-function setStatus(text,cls){const el=document.getElementById('pose-status');el.textContent=text;el.className=cls||''}
-function addLog(msg,type='coaching'){const log=document.getElementById('coaching-log'),empty=document.getElementById('log-empty');empty&&empty.remove();const time=new Date().toTimeString().split(' ')[0],entry=document.createElement('div');entry.className='log-entry '+type;entry.innerHTML='<div class="log-time">'+time+'</div>'+msg;log.appendChild(entry);log.scrollTop=log.scrollHeight;return entry}
-function updateTimer(){if(!sessionStart)return;const s=Math.floor((Date.now()-sessionStart)/1000);document.getElementById('stat-time').textContent=Math.floor(s/60)+':'+(s%60).toString().padStart(2,'0')}
+
+function drawSkeleton(lm){
+  ctx.lineWidth=2;ctx.strokeStyle='rgba(200,240,75,.65)';ctx.fillStyle='rgba(200,240,75,.9)';
+  // Draw body connection lines
+  CONNECTIONS.forEach(([a,b])=>{
+    const pa=lm[a],pb=lm[b];
+    if(!pa||!pb||(pa.visibility||0)<.4||(pb.visibility||0)<.4)return;
+    ctx.beginPath();ctx.moveTo(pa.x*canvas.width,pa.y*canvas.height);ctx.lineTo(pb.x*canvas.width,pb.y*canvas.height);ctx.stroke();
+  });
+  // Draw landmark dots — SKIP face landmarks (indices 0-10)
+  lm.forEach((p,i)=>{
+    if(FACE_LANDMARK_IDS.has(i))return; // skip face
+    if((p.visibility||0)<.4)return;
+    ctx.beginPath();ctx.arc(p.x*canvas.width,p.y*canvas.height,4,0,Math.PI*2);ctx.fill();
+  });
+}
+
+function updateDevUI(dev,threshold){
+  const pct=Math.round(dev*100),badge=document.getElementById('deviation-badge');
+  badge.classList.add('show');badge.textContent=pct+'%';
+  document.getElementById('stat-dev').textContent=pct+'%';
+  const cls=dev>threshold?'danger':dev>threshold*.7?'warn':'good';
+  badge.className='show '+cls;
+  document.getElementById('alert-overlay').className=dev>threshold?'danger':dev>threshold*.7?'warn':'';
+  setStatus(dev>threshold?'Deviation!':'Form good',dev>threshold?'warning':'active');
+}
+
+function setStatus(text,cls){const el=document.getElementById('pose-status');el.textContent=text;el.className=cls||'';}
+
+function addLog(msg,type='coaching'){
+  const log=document.getElementById('coaching-log'),empty=document.getElementById('log-empty');
+  empty&&empty.remove();
+  const time=new Date().toTimeString().split(' ')[0],entry=document.createElement('div');
+  entry.className='log-entry '+type;
+  entry.innerHTML='<div class="log-time">'+time+'</div>'+msg;
+  log.appendChild(entry);log.scrollTop=log.scrollHeight;return entry;
+}
+
+function updateTimer(){
+  if(!sessionStart)return;
+  const s=Math.floor((Date.now()-sessionStart)/1000);
+  document.getElementById('stat-time').textContent=Math.floor(s/60)+':'+(s%60).toString().padStart(2,'0');
+}
 </script>
 </body>
 </html>
