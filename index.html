@@ -8,3 +8,143 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+<style>
+:root{--lime:#C8F04B;--bg:#0a0a0a;--surface:#131313;--border:#222;--text:#e8e8e8;--muted:#555;--danger:#ff4444;--warn:#ffaa00;--good:#44ff88}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:var(--bg);color:var(--text);font-family:'DM Mono',monospace;min-height:100%;overflow-x:hidden}
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--surface);position:sticky;top:0;z-index:100}
+.logo{font-family:'Syne',sans-serif;font-weight:800;font-size:1.25rem;letter-spacing:-0.02em}
+.logo span{color:var(--lime)}
+.poc-badge{font-size:0.58rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);border:1px solid var(--border);padding:3px 8px;border-radius:20px}
+.screen{display:none}.screen.active{display:block}
+#host-notice{margin:16px;padding:14px 16px;background:rgba(255,170,0,.08);border:1px solid rgba(255,170,0,.3);border-radius:10px;font-size:.72rem;line-height:1.6;color:var(--warn);display:none}
+#host-notice strong{display:block;margin-bottom:4px;font-size:.78rem}
+#setup-screen{padding:16px;display:flex;flex-direction:column;gap:14px}
+#setup-screen.active{display:flex}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;align-items:center}
+.saved-badge{font-size:.55rem;background:rgba(68,255,136,.12);color:var(--good);border:1px solid rgba(68,255,136,.3);padding:2px 7px;border-radius:10px;letter-spacing:.06em}
+.field input{background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:'DM Mono',monospace;font-size:.82rem;padding:12px 14px;border-radius:8px;outline:none;width:100%;transition:border-color .2s}
+.field input:focus{border-color:var(--lime)}
+.field input::placeholder{color:var(--muted)}
+.hint{font-size:.6rem;color:var(--muted);line-height:1.5;margin-top:2px}
+.clear-keys{font-size:.62rem;color:var(--muted);text-decoration:underline;cursor:pointer;background:none;border:none;font-family:'DM Mono',monospace;padding:0}
+#start-btn{background:var(--lime);color:#0a0a0a;font-family:'Syne',sans-serif;font-weight:800;font-size:1rem;border:none;padding:16px;border-radius:10px;cursor:pointer;width:100%;margin-top:4px;transition:opacity .2s}
+#start-btn:disabled{opacity:.35}
+.setup-divider{border:none;border-top:1px solid var(--border)}
+.section-title{font-size:.62rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.slider-row{display:flex;align-items:center;gap:10px}
+.slider-row span{font-size:.68rem;color:var(--muted);white-space:nowrap}
+input[type=range]{flex:1;accent-color:var(--lime);cursor:pointer}
+#threshold-val{color:var(--lime);font-size:.85rem;min-width:36px;text-align:right}
+.joints-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.joint-toggle{display:flex;align-items:center;gap:7px;font-size:.72rem;padding:8px 10px;border-radius:6px;border:1px solid var(--border);cursor:pointer;user-select:none;transition:border-color .15s,background .15s}
+.joint-toggle input{accent-color:var(--lime)}
+.joint-toggle.active{background:rgba(200,240,75,.07);border-color:rgba(200,240,75,.35)}
+#session-screen{display:flex;flex-direction:column}
+#session-screen.active{display:flex}
+#camera-wrap{position:relative;background:#000;width:100%;aspect-ratio:3/4;overflow:hidden;flex-shrink:0}
+video{display:none}
+#canvas{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block}
+#alert-overlay{position:absolute;inset:0;border:3px solid transparent;pointer-events:none;transition:border-color .3s,box-shadow .3s}
+#alert-overlay.warn{border-color:var(--warn);box-shadow:inset 0 0 40px rgba(255,170,0,.15)}
+#alert-overlay.danger{border-color:var(--danger);box-shadow:inset 0 0 40px rgba(255,68,68,.18);animation:pulse-border .6s ease-in-out infinite alternate}
+@keyframes pulse-border{from{box-shadow:inset 0 0 30px rgba(255,68,68,.12)}to{box-shadow:inset 0 0 60px rgba(255,68,68,.28)}}
+#pose-status{position:absolute;top:10px;left:10px;font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;padding:5px 11px;border-radius:20px;background:rgba(10,10,10,.78);border:1px solid var(--border);backdrop-filter:blur(6px);transition:color .3s,border-color .3s}
+#pose-status.active{color:var(--good);border-color:var(--good)}
+#pose-status.warning{color:var(--warn);border-color:var(--warn)}
+#pose-status.error-state{color:var(--danger);border-color:var(--danger)}
+#deviation-badge{position:absolute;top:10px;right:10px;font-family:'Syne',sans-serif;font-weight:800;font-size:1.6rem;padding:6px 14px;border-radius:8px;background:rgba(10,10,10,.8);border:1px solid var(--border);backdrop-filter:blur(6px);display:none;transition:color .3s,border-color .3s}
+#deviation-badge.show{display:block}
+#deviation-badge.good{color:var(--good);border-color:var(--good)}
+#deviation-badge.warn{color:var(--warn);border-color:var(--warn)}
+#deviation-badge.danger{color:var(--danger);border-color:var(--danger)}
+#voice-indicator{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);display:none;align-items:center;gap:8px;background:rgba(10,10,10,.85);border:1px solid var(--warn);border-radius:24px;padding:7px 16px;font-size:.7rem;color:var(--warn);backdrop-filter:blur(8px);white-space:nowrap}
+#voice-indicator.show{display:flex}
+.voice-bars{display:flex;align-items:center;gap:3px;height:14px}
+.voice-bar{width:3px;background:var(--warn);border-radius:2px;animation:bar-bounce .5s ease-in-out infinite alternate}
+.voice-bar:nth-child(1){height:5px;animation-delay:0s}.voice-bar:nth-child(2){height:10px;animation-delay:.1s}.voice-bar:nth-child(3){height:14px;animation-delay:.2s}.voice-bar:nth-child(4){height:9px;animation-delay:.3s}.voice-bar:nth-child(5){height:6px;animation-delay:.15s}
+@keyframes bar-bounce{from{transform:scaleY(.4)}to{transform:scaleY(1)}}
+#stats-bar{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--border);border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0}
+.stat-cell{padding:10px 8px;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:2px}
+.stat-cell:last-child{border-right:none}
+.stat-label{font-size:.5rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.stat-value{font-family:'Syne',sans-serif;font-weight:700;font-size:1rem;color:var(--lime)}
+#coaching-log{overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-height:160px;max-height:260px}
+#coaching-log::-webkit-scrollbar{width:3px}
+#coaching-log::-webkit-scrollbar-thumb{background:var(--border)}
+.log-empty{color:var(--muted);font-size:.72rem;text-align:center;margin-top:20px;line-height:1.7}
+.log-entry{background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:9px 12px;font-size:.72rem;line-height:1.5;animation:slide-in .25s ease}
+.log-entry.coaching{border-left:3px solid var(--lime)}
+.log-entry.system{border-left:3px solid var(--muted);color:var(--muted);font-size:.65rem}
+.log-entry.error{border-left:3px solid var(--danger);color:#ff8888}
+.log-entry.speaking{border-left:3px solid var(--warn);animation:slide-in .25s ease,glow-pulse 1s ease-in-out infinite alternate}
+@keyframes slide-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+@keyframes glow-pulse{from{box-shadow:none}to{box-shadow:0 0 10px rgba(255,170,0,.18)}}
+.log-time{font-size:.57rem;color:var(--muted);margin-bottom:3px}
+#end-btn{margin:12px 14px 20px;padding:13px;background:transparent;border:1px solid var(--border);color:var(--muted);font-family:'DM Mono',monospace;font-size:.75rem;border-radius:8px;cursor:pointer;letter-spacing:.06em;text-transform:uppercase}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">Form<span>Fit</span></div>
+  <div class="poc-badge">Coaching PoC</div>
+</header>
+<div id="host-notice"><strong>Open via web server — not as a downloaded file</strong>Camera needs HTTPS.</div>
+<div id="setup-screen" class="screen active">
+  <div class="field"><label>Anthropic API Key <span class="saved-badge" id="ak-saved" style="display:none">Saved</span></label><input type="password" id="anthropic-key" placeholder="sk-ant-..." autocomplete="off"/></div>
+  <div class="field"><label>ElevenLabs API Key <span class="saved-badge" id="ek-saved" style="display:none">Saved</span></label><input type="password" id="elevenlabs-key" placeholder="Your ElevenLabs key..." autocomplete="off"/></div>
+  <div style="display:flex;justify-content:flex-end"><button class="clear-keys" onclick="clearKeys()">Clear saved keys</button></div>
+  <div class="field"><label>ElevenLabs Voice ID</label><input type="text" id="voice-id" value="XB0fDUnXU5powFXDhCwa"/><div class="hint">Default = Charlotte (British female)</div></div>
+  <hr class="setup-divider"/>
+  <div><div class="section-title">Deviation Threshold</div><div class="slider-row"><span>Sensitive</span><input type="range" id="threshold" min="0.05" max="0.35" step="0.01" value="0.15" oninput="document.getElementById('threshold-val').textContent=parseFloat(this.value).toFixed(2)"/><span>Lenient</span><span id="threshold-val">0.15</span></div><div class="hint">Start at 0.15. Lower fires more often.</div></div>
+  <div><div class="section-title">Monitor Joints</div><div class="joints-grid" id="joints-grid"></div></div>
+  <button id="start-btn" onclick="startSession()">Start Camera</button>
+</div>
+<div id="session-screen" class="screen">
+  <div id="camera-wrap">
+    <video id="video" playsinline></video>
+    <canvas id="canvas"></canvas>
+    <div id="alert-overlay"></div>
+    <div id="pose-status">Waiting</div>
+    <div id="deviation-badge">-</div>
+    <div id="voice-indicator"><div class="voice-bars"><div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div></div>Speaking...</div>
+  </div>
+  <div id="stats-bar">
+    <div class="stat-cell"><div class="stat-label">Frames</div><div class="stat-value" id="stat-frames">0</div></div>
+    <div class="stat-cell"><div class="stat-label">Cues</div><div class="stat-value" id="stat-cues">0</div></div>
+    <div class="stat-cell"><div class="stat-label">Deviation</div><div class="stat-value" id="stat-dev">-</div></div>
+    <div class="stat-cell"><div class="stat-label">Time</div><div class="stat-value" id="stat-time">0:00</div></div>
+  </div>
+  <div id="coaching-log"><div class="log-empty" id="log-empty">Hold still ~3 sec to set baseline.<br/>Then move to trigger cues.</div></div>
+  <button id="end-btn" onclick="endSession()">End Session</button>
+</div>
+<script>
+const COOLDOWN_MS=8000,DEVIATION_FRAMES=12,BASELINE_FRAMES=45,ELEVENLABS_MODEL='eleven_turbo_v2',LS_AK='ff_anthropic_key',LS_EK='ff_elevenlabs_key';
+const JOINT_DEFS=[{id:'spine',label:'Spine',landmarks:[11,12,23,24]},{id:'left-knee',label:'L Knee',landmarks:[23,25,27]},{id:'right-knee',label:'R Knee',landmarks:[24,26,28]},{id:'left-elbow',label:'L Elbow',landmarks:[11,13,15]},{id:'right-elbow',label:'R Elbow',landmarks:[12,14,16]},{id:'left-hip',label:'L Hip',landmarks:[11,23,25]},{id:'right-hip',label:'R Hip',landmarks:[12,24,26]},{id:'shoulders',label:'Shoulders',landmarks:[11,12,23]}];
+let sessionActive=false,lastCueTime=0,cueCount=0,frameCount=0,deviationStreak=0,sessionStart=null,timerInterval=null,isSpeaking=false,baselineLandmarks=null,baselineFrames=0,baselineReady=false;
+let activeJoints=new Set(JOINT_DEFS.map(j=>j.id));
+const canvas=document.getElementById('canvas'),ctx=canvas.getContext('2d');
+if(location.protocol==='file:'||location.protocol==='content:')document.getElementById('host-notice').style.display='block';
+window.addEventListener('DOMContentLoaded',()=>{const ak=localStorage.getItem(LS_AK),ek=localStorage.getItem(LS_EK);if(ak){document.getElementById('anthropic-key').value=ak;document.getElementById('ak-saved').style.display='inline'}if(ek){document.getElementById('elevenlabs-key').value=ek;document.getElementById('ek-saved').style.display='inline'}});
+function clearKeys(){localStorage.removeItem(LS_AK);localStorage.removeItem(LS_EK);document.getElementById('anthropic-key').value='';document.getElementById('elevenlabs-key').value='';document.getElementById('ak-saved').style.display='none';document.getElementById('ek-saved').style.display='none'}
+(function(){const grid=document.getElementById('joints-grid');JOINT_DEFS.forEach(j=>{const lbl=document.createElement('label');lbl.className='joint-toggle active';lbl.innerHTML='<input type="checkbox" checked/>'+j.label;lbl.querySelector('input').addEventListener('change',e=>{e.target.checked?(activeJoints.add(j.id),lbl.classList.add('active')):(activeJoints.delete(j.id),lbl.classList.remove('active'))});grid.appendChild(lbl)})})();
+async function startSession(){const ak=document.getElementById('anthropic-key').value.trim(),ek=document.getElementById('elevenlabs-key').value.trim();if(!ak||!ek)return alert('Enter both API keys first.');localStorage.setItem(LS_AK,ak);localStorage.setItem(LS_EK,ek);window._ak=ak;window._ek=ek;document.getElementById('start-btn').disabled=true;document.getElementById('setup-screen').classList.remove('active');document.getElementById('session-screen').classList.add('active');document.getElementById('coaching-log').innerHTML='<div class="log-empty" id="log-empty">Hold still ~3 sec to set baseline.<br/>Then move to trigger cues.</div>';addLog('Initialising MediaPipe...','system');try{await initPose();sessionActive=true;sessionStart=Date.now();timerInterval=setInterval(updateTimer,1000);setStatus('Calibrating...','');addLog('Camera live. Hold still to set baseline.','system')}catch(e){addLog('Camera failed: '+e.message,'error');endSession()}}
+function endSession(){sessionActive=false;clearInterval(timerInterval);document.getElementById('session-screen').classList.remove('active');document.getElementById('setup-screen').classList.add('active');document.getElementById('start-btn').disabled=false;baselineLandmarks=null;baselineFrames=0;baselineReady=false;frameCount=0;cueCount=0;deviationStreak=0;isSpeaking=false;['stat-frames','stat-cues'].forEach(id=>document.getElementById(id).textContent='0');document.getElementById('stat-dev').textContent='-';document.getElementById('stat-time').textContent='0:00'}
+async function initPose(){const video=document.getElementById('video'),pose=new Pose({locateFile:f=>'https://cdn.jsdelivr.net/npm/@mediapipe/pose/'+f});pose.setOptions({modelComplexity:1,smoothLandmarks:true,enableSegmentation:false,minDetectionConfidence:.6,minTrackingConfidence:.6});pose.onResults(onPoseResults);const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:640},height:{ideal:480}},audio:false});video.srcObject=stream;await new Promise(r=>{video.onloadedmetadata=r});video.play();canvas.width=video.videoWidth||640;canvas.height=video.videoHeight||480;new Camera(video,{onFrame:async()=>{if(sessionActive)await pose.send({image:video})},width:640,height:480}).start()}
+function onPoseResults(results){if(!sessionActive)return;frameCount++;document.getElementById('stat-frames').textContent=frameCount;ctx.save();ctx.clearRect(0,0,canvas.width,canvas.height);results.image&&ctx.drawImage(results.image,0,0,canvas.width,canvas.height);if(!results.poseLandmarks){setStatus('No pose','error-state');return ctx.restore()}const lm=results.poseLandmarks;drawSkeleton(lm);if(!baselineReady){baselineFrames++;setStatus('Calibrating '+Math.min(100,Math.round(baselineFrames/BASELINE_FRAMES*100))+'%','active');baselineFrames===1?baselineLandmarks=lm.map(p=>({...p})):baselineLandmarks=baselineLandmarks.map((b,i)=>({x:b.x*.9+lm[i].x*.1,y:b.y*.9+lm[i].y*.1,z:b.z*.9+lm[i].z*.1,visibility:lm[i].visibility}));if(baselineFrames>=BASELINE_FRAMES){baselineReady=true;setStatus('Monitoring','active');addLog('Baseline set - move to test cues.','system')}return ctx.restore()}const threshold=parseFloat(document.getElementById('threshold').value),deviation=computeDeviation(lm,baselineLandmarks);updateDevUI(deviation,threshold);deviation>threshold?(deviationStreak++,Date.now()-lastCueTime>COOLDOWN_MS&&deviationStreak>=DEVIATION_FRAMES&&!isSpeaking&&(lastCueTime=Date.now(),deviationStreak=0,fireCue(lm,deviation))):deviationStreak=Math.max(0,deviationStreak-1);ctx.restore()}
+function getAngle(lm,indices){const pts=indices.map(i=>lm[i]);if(pts.some(p=>!p||(p.visibility||0)<.4))return null;const[a,b,c]=pts,v1={x:a.x-b.x,y:a.y-b.y},v2={x:c.x-b.x,y:c.y-b.y},dot=v1.x*v2.x+v1.y*v2.y,mag=Math.sqrt(v1.x**2+v1.y**2)*Math.sqrt(v2.x**2+v2.y**2);return mag===0?null:Math.acos(Math.min(1,Math.max(-1,dot/mag)))}
+function computeDeviation(cur,base){let total=0,count=0;JOINT_DEFS.forEach(j=>{if(activeJoints.has(j.id)){const a1=getAngle(cur,j.landmarks),a2=getAngle(base,j.landmarks);null!==a1&&null!==a2&&(total+=Math.abs(a1-a2)/Math.PI,count++)}});return count>0?total/count:0}
+function worstJoint(cur,base){let worst=null,worstDev=-1;JOINT_DEFS.forEach(j=>{if(activeJoints.has(j.id)){const a1=getAngle(cur,j.landmarks),a2=getAngle(base,j.landmarks);if(null!==a1&&null!==a2){const d=Math.abs(a1-a2)/Math.PI;d>worstDev&&(worstDev=d,worst=j)}}});return worst?worst.label:'overall posture'}
+async function fireCue(lm,deviation){cueCount++;document.getElementById('stat-cues').textContent=cueCount;const joint=worstJoint(lm,baselineLandmarks),pct=Math.round(deviation*100);addLog('Deviation '+pct+'% - '+joint+'. Generating cue...','system');let cueText;try{cueText=await generateCue(joint,pct)}catch(e){return addLog('Claude error: '+e.message,'error'),void(isSpeaking=false)}const logEl=addLog('"'+cueText+'"','speaking');try{await speakCue(cueText,logEl)}catch(e){addLog('TTS error: '+e.message,'error');logEl.classList.replace('speaking','coaching');isSpeaking=false}}
+async function generateCue(joint,pct){const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':window._ak,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:80,system:'You are a calm encouraging British female fitness coach. Keep cues SHORT max 10 words. Direct specific no filler. Examples: Keep your back flat. Straighten those knees.',messages:[{role:'user',content:'Users '+joint+' is '+pct+'% off target. One short corrective cue.'}]})});if(!res.ok){const e=await res.json();throw new Error(e.error?.message||res.statusText)}return(await res.json()).content[0].text.trim().replace(/^["']|["']$/g,'')}
+async function speakCue(text,logEl){const voiceId=document.getElementById('voice-id').value.trim()||'XB0fDUnXU5powFXDhCwa';isSpeaking=true;document.getElementById('voice-indicator').classList.add('show');document.getElementById('alert-overlay').classList.add('warn');const res=await fetch('https://api.elevenlabs.io/v1/text-to-speech/'+voiceId+'/stream',{method:'POST',headers:{'Content-Type':'application/json','xi-api-key':window._ek},body:JSON.stringify({text,model_id:ELEVENLABS_MODEL,voice_settings:{stability:.55,similarity_boost:.8,style:.15,use_speaker_boost:true}})});if(!res.ok){isSpeaking=false;document.getElementById('voice-indicator').classList.remove('show');document.getElementById('alert-overlay').classList.remove('warn');const e=await res.json();throw new Error(e.detail?.message||res.statusText)}const audioCtx=new(window.AudioContext||window.webkitAudioContext)(),buf=await audioCtx.decodeAudioData(await res.arrayBuffer()),src=audioCtx.createBufferSource();src.buffer=buf;src.connect(audioCtx.destination);src.onended=()=>{isSpeaking=false;document.getElementById('voice-indicator').classList.remove('show');document.getElementById('alert-overlay').classList.remove('warn');logEl&&(logEl.classList.remove('speaking'),logEl.classList.add('coaching'));audioCtx.close()};src.start(0)}
+const CONNECTIONS=[[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[24,26],[25,27],[26,28]];
+function drawSkeleton(lm){ctx.lineWidth=2;ctx.strokeStyle='rgba(200,240,75,.65)';ctx.fillStyle='rgba(200,240,75,.9)';CONNECTIONS.forEach(([a,b])=>{const pa=lm[a],pb=lm[b];if(!pa||!pb||(pa.visibility||0)<.4||(pb.visibility||0)<.4)return;ctx.beginPath();ctx.moveTo(pa.x*canvas.width,pa.y*canvas.height);ctx.lineTo(pb.x*canvas.width,pb.y*canvas.height);ctx.stroke()});lm.forEach(p=>{(p.visibility||0)<.4||(ctx.beginPath(),ctx.arc(p.x*canvas.width,p.y*canvas.height,4,0,Math.PI*2),ctx.fill())})}
+function updateDevUI(dev,threshold){const pct=Math.round(dev*100),badge=document.getElementById('deviation-badge');badge.classList.add('show');badge.textContent=pct+'%';document.getElementById('stat-dev').textContent=pct+'%';const cls=dev>threshold?'danger':dev>threshold*.7?'warn':'good';badge.className='show '+cls;document.getElementById('alert-overlay').className=dev>threshold?'danger':dev>threshold*.7?'warn':'';setStatus(dev>threshold?'Deviation!':'Form good',dev>threshold?'warning':'active')}
+function setStatus(text,cls){const el=document.getElementById('pose-status');el.textContent=text;el.className=cls||''}
+function addLog(msg,type='coaching'){const log=document.getElementById('coaching-log'),empty=document.getElementById('log-empty');empty&&empty.remove();const time=new Date().toTimeString().split(' ')[0],entry=document.createElement('div');entry.className='log-entry '+type;entry.innerHTML='<div class="log-time">'+time+'</div>'+msg;log.appendChild(entry);log.scrollTop=log.scrollHeight;return entry}
+function updateTimer(){if(!sessionStart)return;const s=Math.floor((Date.now()-sessionStart)/1000);document.getElementById('stat-time').textContent=Math.floor(s/60)+':'+(s%60).toString().padStart(2,'0')}
+</script>
+</body>
+</html>
