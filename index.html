@@ -6,7 +6,6 @@
 <title>FormFit — Coaching PoC</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
 <style>
 :root{--lime:#C8F04B;--bg:#0a0a0a;--surface:#131313;--border:#222;--text:#e8e8e8;--muted:#555;--danger:#ff4444;--warn:#ffaa00;--good:#44ff88}
@@ -40,63 +39,85 @@ input[type=range]{flex:1;accent-color:var(--lime);cursor:pointer}
 .joint-toggle input{accent-color:var(--lime)}
 .joint-toggle.active{background:rgba(200,240,75,.07);border-color:rgba(200,240,75,.35)}
 
-/* SESSION SCREEN */
+/* SESSION */
 #session-screen{display:flex;flex-direction:column}
 #session-screen.active{display:flex}
 
-/* TWO VIDEO PANELS stacked */
-.video-row{display:grid;grid-template-columns:1fr 1fr;width:100%;aspect-ratio:2/1.5;background:#000;flex-shrink:0}
+/* DUAL VIDEO */
+#video-area{display:grid;grid-template-columns:1fr 1fr;width:100%;background:#000;gap:1px}
+.video-panel{position:relative;width:100%;aspect-ratio:9/16;overflow:hidden;background:#111}
 
-.video-panel{position:relative;overflow:hidden;border-right:1px solid var(--border)}
-.video-panel:last-child{border-right:none}
-.panel-label{position:absolute;top:8px;left:8px;font-size:.52rem;letter-spacing:.1em;text-transform:uppercase;padding:3px 8px;border-radius:12px;background:rgba(10,10,10,.8);border:1px solid var(--border);backdrop-filter:blur(4px);z-index:10;color:var(--muted)}
+/* Ref panel — shows canvas (with skeleton drawn) over the video */
+#ref-panel video{width:100%;height:100%;object-fit:cover;display:block}
+#ref-draw{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;pointer-events:none}
 
-/* Reference video panel */
-#ref-video{width:100%;height:100%;object-fit:cover;display:block}
-#ref-canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-#ref-status{position:absolute;bottom:8px;left:8px;font-size:.52rem;letter-spacing:.08em;padding:3px 8px;border-radius:10px;background:rgba(10,10,10,.8);border:1px solid var(--border);color:var(--muted)}
-
-/* User camera panel */
-#user-canvas{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block}
+/* User panel */
+#user-draw{width:100%;height:100%;object-fit:cover;display:block;transform:scaleX(-1)}
 #user-video{display:none}
-#alert-overlay{position:absolute;inset:0;border:3px solid transparent;pointer-events:none;transition:border-color .3s}
-#alert-overlay.warn{border-color:var(--warn)}
-#alert-overlay.danger{border-color:var(--danger);animation:pulse-border .6s ease-in-out infinite alternate}
-@keyframes pulse-border{from{box-shadow:inset 0 0 20px rgba(255,68,68,.1)}to{box-shadow:inset 0 0 40px rgba(255,68,68,.25)}}
-#pose-status{position:absolute;bottom:8px;left:8px;font-size:.52rem;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:10px;background:rgba(10,10,10,.8);border:1px solid var(--border);backdrop-filter:blur(4px);transition:color .3s,border-color .3s}
-#pose-status.active{color:var(--good);border-color:var(--good)}
+
+.panel-label{position:absolute;bottom:36px;left:8px;font-size:.52rem;letter-spacing:.1em;text-transform:uppercase;padding:3px 8px;border-radius:10px;background:rgba(10,10,10,.8);border:1px solid var(--border);z-index:10;pointer-events:none}
+.panel-label.ref{color:var(--lime);border-color:rgba(200,240,75,.4)}
+.panel-label.you{color:var(--good);border-color:rgba(68,255,136,.4)}
+
+/* Ref tracking status */
+#ref-track-status{position:absolute;top:8px;left:8px;font-size:.52rem;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:10px;background:rgba(10,10,10,.8);border:1px solid var(--border);z-index:10;color:var(--muted)}
+#ref-track-status.ok{color:var(--lime);border-color:rgba(200,240,75,.4)}
+
+/* Play/pause button on ref panel */
+#play-pause-btn{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);background:rgba(10,10,10,.85);border:1px solid var(--border);border-radius:20px;padding:5px 14px;font-size:.65rem;color:var(--text);cursor:pointer;font-family:'DM Mono',monospace;letter-spacing:.06em;z-index:20;text-transform:uppercase;backdrop-filter:blur(6px);transition:border-color .2s,color .2s}
+#play-pause-btn:hover{border-color:var(--lime);color:var(--lime)}
+
+/* User panel overlays */
+#pose-status{position:absolute;top:8px;left:8px;font-size:.52rem;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:10px;background:rgba(10,10,10,.8);border:1px solid var(--border);z-index:10}
+#pose-status.active{color:var(--good);border-color:rgba(68,255,136,.4)}
 #pose-status.warning{color:var(--warn);border-color:var(--warn)}
 #pose-status.error-state{color:var(--danger);border-color:var(--danger)}
-#deviation-badge{position:absolute;top:8px;right:8px;font-family:'Syne',sans-serif;font-weight:800;font-size:1.3rem;padding:4px 10px;border-radius:8px;background:rgba(10,10,10,.85);border:1px solid var(--border);backdrop-filter:blur(6px);display:none}
+
+#deviation-badge{position:absolute;top:8px;right:8px;font-family:'Syne',sans-serif;font-weight:800;font-size:1.1rem;padding:4px 10px;border-radius:6px;background:rgba(10,10,10,.8);border:1px solid var(--border);display:none;z-index:10}
 #deviation-badge.show{display:block}
-#deviation-badge.good{color:var(--good);border-color:var(--good)}
+#deviation-badge.good{color:var(--good);border-color:rgba(68,255,136,.4)}
 #deviation-badge.warn{color:var(--warn);border-color:var(--warn)}
 #deviation-badge.danger{color:var(--danger);border-color:var(--danger)}
-#voice-indicator{position:absolute;bottom:8px;right:8px;display:none;align-items:center;gap:6px;background:rgba(10,10,10,.85);border:1px solid var(--warn);border-radius:20px;padding:5px 12px;font-size:.62rem;color:var(--warn);backdrop-filter:blur(8px)}
+
+#alert-overlay{position:absolute;inset:0;border:3px solid transparent;pointer-events:none;transition:border-color .3s;z-index:5}
+#alert-overlay.warn{border-color:var(--warn);box-shadow:inset 0 0 30px rgba(255,170,0,.15)}
+#alert-overlay.danger{border-color:var(--danger);box-shadow:inset 0 0 30px rgba(255,68,68,.18);animation:pulse-border .6s ease-in-out infinite alternate}
+@keyframes pulse-border{from{box-shadow:inset 0 0 20px rgba(255,68,68,.1)}to{box-shadow:inset 0 0 50px rgba(255,68,68,.25)}}
+
+#voice-indicator{position:absolute;bottom:8px;right:8px;display:none;align-items:center;gap:6px;background:rgba(10,10,10,.85);border:1px solid var(--warn);border-radius:20px;padding:5px 12px;font-size:.6rem;color:var(--warn);z-index:10;white-space:nowrap}
 #voice-indicator.show{display:flex}
 .voice-bars{display:flex;align-items:center;gap:2px;height:12px}
 .voice-bar{width:2px;background:var(--warn);border-radius:2px;animation:bar-bounce .5s ease-in-out infinite alternate}
 .voice-bar:nth-child(1){height:4px;animation-delay:0s}.voice-bar:nth-child(2){height:8px;animation-delay:.1s}.voice-bar:nth-child(3){height:12px;animation-delay:.2s}.voice-bar:nth-child(4){height:7px;animation-delay:.3s}.voice-bar:nth-child(5){height:5px;animation-delay:.15s}
 @keyframes bar-bounce{from{transform:scaleY(.4)}to{transform:scaleY(1)}}
 
+/* Calibration overlay on user panel */
+#cal-overlay{position:absolute;inset:0;background:rgba(10,10,10,.75);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;z-index:20;backdrop-filter:blur(3px)}
+#cal-overlay.hide{display:none}
+.cal-title{font-family:'Syne',sans-serif;font-weight:800;font-size:.85rem;color:var(--lime)}
+.cal-sub{font-size:.58rem;color:var(--muted);text-align:center;line-height:1.5}
+.cal-bar-wrap{width:70%;background:var(--border);border-radius:4px;height:4px;overflow:hidden}
+.cal-bar-fill{height:100%;background:var(--lime);width:0%;transition:width .2s;border-radius:4px}
+
+/* STATS + LOG */
 #stats-bar{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--border);border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0}
 .stat-cell{padding:8px 6px;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:2px}
 .stat-cell:last-child{border-right:none}
 .stat-label{font-size:.48rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .stat-value{font-family:'Syne',sans-serif;font-weight:700;font-size:.9rem;color:var(--lime)}
-#coaching-log{overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-height:140px;max-height:220px}
+#coaching-log{overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:6px;min-height:100px;max-height:180px}
 #coaching-log::-webkit-scrollbar{width:3px}
 #coaching-log::-webkit-scrollbar-thumb{background:var(--border)}
-.log-empty{color:var(--muted);font-size:.72rem;text-align:center;margin-top:20px;line-height:1.7}
-.log-entry{background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:9px 12px;font-size:.72rem;line-height:1.5;animation:slide-in .25s ease}
+.log-empty{color:var(--muted);font-size:.68rem;text-align:center;margin-top:12px;line-height:1.7}
+.log-entry{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:.68rem;line-height:1.5;animation:slide-in .2s ease}
 .log-entry.coaching{border-left:3px solid var(--lime)}
-.log-entry.system{border-left:3px solid var(--muted);color:var(--muted);font-size:.65rem}
+.log-entry.system{border-left:3px solid var(--muted);color:var(--muted);font-size:.6rem}
 .log-entry.error{border-left:3px solid var(--danger);color:#ff8888}
-.log-entry.speaking{border-left:3px solid var(--warn);animation:slide-in .25s ease,glow-pulse 1s ease-in-out infinite alternate}
-@keyframes slide-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
-@keyframes glow-pulse{from{box-shadow:none}to{box-shadow:0 0 10px rgba(255,170,0,.18)}}
-.log-time{font-size:.57rem;color:var(--muted);margin-bottom:3px}
-#end-btn{margin:12px 14px 20px;padding:13px;background:transparent;border:1px solid var(--border);color:var(--muted);font-family:'DM Mono',monospace;font-size:.75rem;border-radius:8px;cursor:pointer;letter-spacing:.06em;text-transform:uppercase}
+.log-entry.speaking{border-left:3px solid var(--warn);animation:slide-in .2s ease,glow-pulse 1s ease-in-out infinite alternate}
+@keyframes slide-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+@keyframes glow-pulse{from{box-shadow:none}to{box-shadow:0 0 8px rgba(255,170,0,.15)}}
+.log-time{font-size:.52rem;color:var(--muted);margin-bottom:2px}
+#end-btn{margin:10px 12px 16px;padding:12px;background:transparent;border:1px solid var(--border);color:var(--muted);font-family:'DM Mono',monospace;font-size:.7rem;border-radius:8px;cursor:pointer;letter-spacing:.06em;text-transform:uppercase}
 </style>
 </head>
 <body>
@@ -105,41 +126,53 @@ input[type=range]{flex:1;accent-color:var(--lime);cursor:pointer}
   <div class="poc-badge">Dual-Video PoC</div>
 </header>
 
+<!-- SETUP -->
 <div id="setup-screen" class="screen active">
   <div class="field"><label>Anthropic API Key <span class="saved-badge" id="ak-saved" style="display:none">Saved</span></label><input type="password" id="anthropic-key" placeholder="sk-ant-..." autocomplete="off"/></div>
   <div class="field"><label>ElevenLabs API Key <span class="saved-badge" id="ek-saved" style="display:none">Saved</span></label><input type="password" id="elevenlabs-key" placeholder="Your ElevenLabs key..." autocomplete="off"/></div>
   <div style="display:flex;justify-content:flex-end"><button class="clear-keys" onclick="clearKeys()">Clear saved keys</button></div>
   <div class="field"><label>ElevenLabs Voice ID</label><input type="text" id="voice-id" value="XB0fDUnXU5powFXDhCwa"/><div class="hint">Default = Charlotte (British female)</div></div>
   <hr class="setup-divider"/>
-  <div><div class="section-title">Deviation Threshold</div><div class="slider-row"><span>Sensitive</span><input type="range" id="threshold" min="0.05" max="0.35" step="0.01" value="0.15" oninput="document.getElementById('threshold-val').textContent=parseFloat(this.value).toFixed(2)"/><span>Lenient</span><span id="threshold-val">0.15</span></div><div class="hint">Start at 0.15. Lower fires more often.</div></div>
+  <div>
+    <div class="section-title">Deviation Threshold</div>
+    <div class="slider-row"><span>Sensitive</span><input type="range" id="threshold" min="0.05" max="0.35" step="0.01" value="0.15" oninput="document.getElementById('threshold-val').textContent=parseFloat(this.value).toFixed(2)"/><span>Lenient</span><span id="threshold-val">0.15</span></div>
+    <div class="hint">0.15 is a good start. Lower = fires more often.</div>
+  </div>
   <div><div class="section-title">Monitor Joints</div><div class="joints-grid" id="joints-grid"></div></div>
   <button id="start-btn" onclick="startSession()">Start Camera</button>
 </div>
 
+<!-- SESSION -->
 <div id="session-screen" class="screen">
-  <!-- Side-by-side: Reference video | Your camera -->
-  <div class="video-row">
+  <div id="video-area">
 
-    <!-- LEFT: Reference instructor video -->
+    <!-- LEFT: Instructor reference video -->
     <div class="video-panel" id="ref-panel">
-      <div class="panel-label">Instructor</div>
-      <video id="ref-video" playsinline loop muted crossorigin="anonymous"></video>
-      <canvas id="ref-canvas"></canvas>
-      <div id="ref-status">Loading...</div>
+      <video id="ref-video" playsinline muted loop src="Squats.mp4" crossorigin="anonymous"></video>
+      <!-- Skeleton drawn on top of the video -->
+      <canvas id="ref-draw"></canvas>
+      <div id="ref-track-status">Loading...</div>
+      <div class="panel-label ref">Instructor</div>
+      <button id="play-pause-btn" onclick="togglePlayPause()">⏸ Pause</button>
     </div>
 
     <!-- RIGHT: User camera -->
-    <div class="video-panel" id="user-panel">
-      <div class="panel-label">You</div>
+    <div class="video-panel" id="cam-panel">
       <video id="user-video" playsinline></video>
-      <canvas id="user-canvas"></canvas>
-      <div id="alert-overlay"></div>
+      <canvas id="user-draw"></canvas>
       <div id="pose-status">Waiting</div>
-      <div id="deviation-badge">-</div>
+      <div id="deviation-badge"></div>
+      <div id="alert-overlay"></div>
       <div id="voice-indicator">
         <div class="voice-bars"><div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div></div>
         Speaking...
       </div>
+      <div id="cal-overlay">
+        <div class="cal-title">Calibrating</div>
+        <div class="cal-sub">Hold still — reading your baseline</div>
+        <div class="cal-bar-wrap"><div class="cal-bar-fill" id="cal-bar"></div></div>
+      </div>
+      <div class="panel-label you">You</div>
     </div>
 
   </div>
@@ -150,55 +183,68 @@ input[type=range]{flex:1;accent-color:var(--lime);cursor:pointer}
     <div class="stat-cell"><div class="stat-label">Deviation</div><div class="stat-value" id="stat-dev">-</div></div>
     <div class="stat-cell"><div class="stat-label">Time</div><div class="stat-value" id="stat-time">0:00</div></div>
   </div>
-  <div id="coaching-log"><div class="log-empty" id="log-empty">Reference video and camera will both be tracked.<br/>Hold still to calibrate, then squat along with the instructor.</div></div>
+
+  <div id="coaching-log"><div class="log-empty" id="log-empty">Hold still ~3 sec to calibrate, then move.</div></div>
   <button id="end-btn" onclick="endSession()">End Session</button>
 </div>
 
 <script>
-const COOLDOWN_MS=10000, DEVIATION_FRAMES=15, BASELINE_FRAMES=45, ELEVENLABS_MODEL='eleven_turbo_v2', LS_AK='ff_anthropic_key', LS_EK='ff_elevenlabs_key';
-const REF_VIDEO_URL = 'Squats.mp4'; // served from same origin via Vercel
+// ── CONSTANTS ─────────────────────────────────────────────────────
+const COOLDOWN_MS=8000, BASELINE_FRAMES=45, DEVIATION_FRAMES=10,
+      ELEVENLABS_MODEL='eleven_turbo_v2',
+      LS_AK='ff_anthropic_key', LS_EK='ff_elevenlabs_key';
+
+// Face landmark indices — no dots on face
+const FACE_LM=new Set([0,1,2,3,4,5,6,7,8,9,10]);
+
+// Body skeleton connection pairs
+const CONNECTIONS=[[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[24,26],[25,27],[26,28],[27,29],[28,30],[29,31],[30,32]];
 
 const JOINT_DEFS=[
-  {id:'spine',label:'Spine',landmarks:[11,12,23,24]},
-  {id:'left-knee',label:'L Knee',landmarks:[23,25,27]},
-  {id:'right-knee',label:'R Knee',landmarks:[24,26,28]},
-  {id:'left-elbow',label:'L Elbow',landmarks:[11,13,15]},
-  {id:'right-elbow',label:'R Elbow',landmarks:[12,14,16]},
-  {id:'left-hip',label:'L Hip',landmarks:[11,23,25]},
-  {id:'right-hip',label:'R Hip',landmarks:[12,24,26]},
-  {id:'shoulders',label:'Shoulders',landmarks:[11,12,23]}
+  {id:'spine',     label:'Spine',     lm:[11,12,23,24]},
+  {id:'left-knee', label:'L Knee',    lm:[23,25,27]},
+  {id:'right-knee',label:'R Knee',    lm:[24,26,28]},
+  {id:'left-elbow',label:'L Elbow',   lm:[11,13,15]},
+  {id:'right-elbow',label:'R Elbow',  lm:[12,14,16]},
+  {id:'left-hip',  label:'L Hip',     lm:[11,23,25]},
+  {id:'right-hip', label:'R Hip',     lm:[12,24,26]},
+  {id:'shoulders', label:'Shoulders', lm:[11,12,23]}
 ];
 
-// Face landmark indices to suppress dots (0-10)
-const FACE_LM = new Set([0,1,2,3,4,5,6,7,8,9,10]);
-
-// Body skeleton connections only
-const CONNECTIONS=[[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[24,26],[25,27],[26,28]];
-
-let sessionActive=false, lastCueTime=0, cueCount=0, frameCount=0, deviationStreak=0, sessionStart=null, timerInterval=null, isSpeaking=false;
-let userBaseline=null, baselineFrames=0, baselineReady=false;
+// ── STATE ─────────────────────────────────────────────────────────
+let sessionActive=false, lastCueTime=0, cueCount=0, frameCount=0,
+    deviationStreak=0, sessionStart=null, timerInterval=null,
+    isSpeaking=false, baselineReady=false, baselineFrames=0, baselineLandmarks=null;
 let activeJoints=new Set(JOINT_DEFS.map(j=>j.id));
-let refLandmarks=null; // latest pose from reference video
+let refLandmarks=null;   // latest pose from instructor video
 let sharedAudioCtx=null;
+let refPoseReady=false;
 
-// Canvases
-const userCanvas=document.getElementById('user-canvas'), userCtx=userCanvas.getContext('2d');
-const refCanvas=document.getElementById('ref-canvas'), refCtx=refCanvas.getContext('2d');
+// Canvas contexts
+const refDraw=document.getElementById('ref-draw');
+const rctx=refDraw.getContext('2d');
+const userDraw=document.getElementById('user-draw');
+const uctx=userDraw.getContext('2d');
 
-// Load saved keys
+// Hidden offscreen canvas for feeding ref video frames to MediaPipe
+const refOffscreen=document.createElement('canvas');
+const roff=refOffscreen.getContext('2d');
+
+// ── KEY PERSISTENCE ───────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded',()=>{
-  const ak=localStorage.getItem(LS_AK), ek=localStorage.getItem(LS_EK);
-  if(ak){document.getElementById('anthropic-key').value=ak; document.getElementById('ak-saved').style.display='inline';}
-  if(ek){document.getElementById('elevenlabs-key').value=ek; document.getElementById('ek-saved').style.display='inline';}
+  const ak=localStorage.getItem(LS_AK),ek=localStorage.getItem(LS_EK);
+  if(ak){document.getElementById('anthropic-key').value=ak;document.getElementById('ak-saved').style.display='inline';}
+  if(ek){document.getElementById('elevenlabs-key').value=ek;document.getElementById('ek-saved').style.display='inline';}
 });
-
 function clearKeys(){
-  localStorage.removeItem(LS_AK); localStorage.removeItem(LS_EK);
-  document.getElementById('anthropic-key').value=''; document.getElementById('elevenlabs-key').value='';
-  document.getElementById('ak-saved').style.display='none'; document.getElementById('ek-saved').style.display='none';
+  localStorage.removeItem(LS_AK);localStorage.removeItem(LS_EK);
+  document.getElementById('anthropic-key').value='';
+  document.getElementById('elevenlabs-key').value='';
+  document.getElementById('ak-saved').style.display='none';
+  document.getElementById('ek-saved').style.display='none';
 }
 
-// Build joint toggles
+// ── JOINT TOGGLES ─────────────────────────────────────────────────
 (function(){
   const grid=document.getElementById('joints-grid');
   JOINT_DEFS.forEach(j=>{
@@ -212,218 +258,259 @@ function clearKeys(){
   });
 })();
 
-async function startSession(){
-  const ak=document.getElementById('anthropic-key').value.trim(), ek=document.getElementById('elevenlabs-key').value.trim();
-  if(!ak||!ek) return alert('Enter both API keys first.');
-  localStorage.setItem(LS_AK,ak); localStorage.setItem(LS_EK,ek);
-  window._ak=ak; window._ek=ek;
+// ── PLAY / PAUSE ──────────────────────────────────────────────────
+function togglePlayPause(){
+  const vid=document.getElementById('ref-video');
+  const btn=document.getElementById('play-pause-btn');
+  if(vid.paused){vid.play();btn.textContent='⏸ Pause';}
+  else{vid.pause();btn.textContent='▶ Play';}
+}
 
-  // Unlock AudioContext on user gesture
+// ── SESSION START ─────────────────────────────────────────────────
+async function startSession(){
+  const ak=document.getElementById('anthropic-key').value.trim(),
+        ek=document.getElementById('elevenlabs-key').value.trim();
+  if(!ak||!ek)return alert('Enter both API keys first.');
+  localStorage.setItem(LS_AK,ak);localStorage.setItem(LS_EK,ek);
+  window._ak=ak;window._ek=ek;
+
+  // Unlock audio on user gesture
   if(!sharedAudioCtx) sharedAudioCtx=new(window.AudioContext||window.webkitAudioContext)();
   if(sharedAudioCtx.state==='suspended') await sharedAudioCtx.resume();
 
   document.getElementById('start-btn').disabled=true;
   document.getElementById('setup-screen').classList.remove('active');
   document.getElementById('session-screen').classList.add('active');
-  document.getElementById('coaching-log').innerHTML='<div class="log-empty" id="log-empty">Initialising...</div>';
+  document.getElementById('coaching-log').innerHTML='<div class="log-empty" id="log-empty">Hold still ~3 sec to calibrate, then move.</div>';
 
-  addLog('Starting MediaPipe on both video streams...','system');
   try{
-    await initBothPoses();
-    sessionActive=true; sessionStart=Date.now();
+    await initPoses();
+    sessionActive=true;sessionStart=Date.now();
     timerInterval=setInterval(updateTimer,1000);
-    setStatus('Calibrating...','');
-    addLog('Both streams live. Hold your starting position to calibrate.','system');
   }catch(e){
-    addLog('Startup failed: '+e.message,'error');
+    addLog('Init failed: '+e.message,'error');
     endSession();
   }
 }
 
 function endSession(){
-  sessionActive=false; clearInterval(timerInterval);
+  sessionActive=false;clearInterval(timerInterval);
   document.getElementById('session-screen').classList.remove('active');
   document.getElementById('setup-screen').classList.add('active');
   document.getElementById('start-btn').disabled=false;
-  userBaseline=null; baselineFrames=0; baselineReady=false;
-  frameCount=0; cueCount=0; deviationStreak=0; isSpeaking=false; refLandmarks=null;
+  baselineLandmarks=null;baselineFrames=0;baselineReady=false;
+  frameCount=0;cueCount=0;deviationStreak=0;isSpeaking=false;refLandmarks=null;refPoseReady=false;
   ['stat-frames','stat-cues'].forEach(id=>document.getElementById(id).textContent='0');
   document.getElementById('stat-dev').textContent='-';
   document.getElementById('stat-time').textContent='0:00';
 }
 
-async function initBothPoses(){
-  // --- Reference video pose ---
-  const refVideo=document.getElementById('ref-video');
-  refVideo.src=REF_VIDEO_URL;
-  refVideo.loop=true;
-  refVideo.muted=true;
+// ── MEDIAPIPE INIT ────────────────────────────────────────────────
+async function initPoses(){
 
-  const refPose=new Pose({locateFile:f=>'https://cdn.jsdelivr.net/npm/@mediapipe/pose/'+f});
-  refPose.setOptions({modelComplexity:1,smoothLandmarks:true,enableSegmentation:false,minDetectionConfidence:.5,minTrackingConfidence:.5});
-  refPose.onResults(onRefPoseResults);
-
-  await new Promise((res,rej)=>{
-    refVideo.onloadedmetadata=res;
-    refVideo.onerror=()=>rej(new Error('Reference video failed to load. Check Squats.mp4 is in repo.'));
-    refVideo.load();
-  });
-  refCanvas.width=refVideo.videoWidth||640;
-  refCanvas.height=refVideo.videoHeight||480;
-  refVideo.play();
-  document.getElementById('ref-status').textContent='Tracking';
-
-  // Poll reference video frames
-  async function pumpRef(){
-    if(!sessionActive) return;
-    if(refVideo.readyState>=2) await refPose.send({image:refVideo});
-    requestAnimationFrame(pumpRef);
-  }
-  pumpRef();
-
-  // --- User camera pose ---
+  // ── 1. USER CAMERA ──
   const userVideo=document.getElementById('user-video');
-  const userPose=new Pose({locateFile:f=>'https://cdn.jsdelivr.net/npm/@mediapipe/pose/'+f});
-  userPose.setOptions({modelComplexity:1,smoothLandmarks:true,enableSegmentation:false,minDetectionConfidence:.6,minTrackingConfidence:.6});
-  userPose.onResults(onUserPoseResults);
-
-  const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:640},height:{ideal:480}},audio:false});
+  const stream=await navigator.mediaDevices.getUserMedia({
+    video:{facingMode:'user',width:{ideal:640},height:{ideal:480}},audio:false
+  });
   userVideo.srcObject=stream;
   await new Promise(r=>{userVideo.onloadedmetadata=r;});
   userVideo.play();
-  userCanvas.width=userVideo.videoWidth||640;
-  userCanvas.height=userVideo.videoHeight||480;
+  userDraw.width=userVideo.videoWidth||640;
+  userDraw.height=userVideo.videoHeight||480;
 
-  new Camera(userVideo,{
-    onFrame:async()=>{if(sessionActive) await userPose.send({image:userVideo});},
-    width:640,height:480
-  }).start();
+  // User pose instance
+  const userPose=new Pose({locateFile:f=>'https://cdn.jsdelivr.net/npm/@mediapipe/pose/'+f});
+  userPose.setOptions({modelComplexity:1,smoothLandmarks:true,enableSegmentation:false,minDetectionConfidence:.6,minTrackingConfidence:.6});
+  userPose.onResults(onUserPose);
+  await userPose.initialize();
+
+  addLog('Camera ready.','system');
+
+  // Manual frame loop for user camera (no Camera utility needed)
+  async function userFrameLoop(){
+    if(!sessionActive){return;}
+    if(userVideo.readyState>=2){
+      await userPose.send({image:userVideo});
+    }
+    requestAnimationFrame(userFrameLoop);
+  }
+  requestAnimationFrame(userFrameLoop);
+
+  // ── 2. REFERENCE VIDEO ──
+  const refVideo=document.getElementById('ref-video');
+
+  // Wait for video metadata
+  await new Promise((resolve,reject)=>{
+    if(refVideo.readyState>=1){resolve();return;}
+    refVideo.onloadedmetadata=resolve;
+    refVideo.onerror=()=>reject(new Error('Video load failed'));
+    setTimeout(()=>reject(new Error('Video timeout after 10s')),10000);
+  });
+
+  refVideo.play().catch(e=>addLog('Video play: '+e.message,'system'));
+
+  refOffscreen.width=refVideo.videoWidth||640;
+  refOffscreen.height=refVideo.videoHeight||480;
+  refDraw.width=refVideo.videoWidth||640;
+  refDraw.height=refVideo.videoHeight||480;
+
+  // Ref pose instance (separate from user pose)
+  const rPose=new Pose({locateFile:f=>'https://cdn.jsdelivr.net/npm/@mediapipe/pose/'+f});
+  rPose.setOptions({modelComplexity:1,smoothLandmarks:true,enableSegmentation:false,minDetectionConfidence:.5,minTrackingConfidence:.5});
+  rPose.onResults(onRefPose);
+  await rPose.initialize();
+
+  document.getElementById('ref-track-status').textContent='Tracking';
+  document.getElementById('ref-track-status').classList.add('ok');
+  addLog('Reference video pose tracking active.','system');
+
+  // Ref frame loop — draw video frame to offscreen canvas, send to MediaPipe
+  // Throttled to ~10fps (every 100ms) to reduce CPU load on mobile
+  let lastRefTime=0;
+  async function refFrameLoop(ts){
+    if(!sessionActive)return;
+    if(ts-lastRefTime>100 && refVideo.readyState>=2 && !refVideo.paused){
+      lastRefTime=ts;
+      roff.drawImage(refVideo,0,0,refOffscreen.width,refOffscreen.height);
+      await rPose.send({image:refOffscreen});
+    }
+    requestAnimationFrame(refFrameLoop);
+  }
+  requestAnimationFrame(refFrameLoop);
 }
 
-// Reference video pose results — just store landmarks + draw skeleton
-function onRefPoseResults(results){
-  if(!sessionActive) return;
-  refCtx.save();
-  refCtx.clearRect(0,0,refCanvas.width,refCanvas.height);
-  // No image draw needed — video shows through underneath
+// ── REFERENCE POSE CALLBACK ───────────────────────────────────────
+function onRefPose(results){
+  // Draw video frame + skeleton onto the visible ref canvas
+  rctx.clearRect(0,0,refDraw.width,refDraw.height);
+  const refVideo=document.getElementById('ref-video');
+  if(refVideo.readyState>=2){
+    rctx.drawImage(refVideo,0,0,refDraw.width,refDraw.height);
+  }
   if(results.poseLandmarks){
     refLandmarks=results.poseLandmarks;
-    drawSkeleton(refCtx,refCanvas,refLandmarks,'rgba(200,240,75,.5)');
+    drawSkeleton(rctx,refDraw,refLandmarks,'rgba(200,240,75,.6)','rgba(200,240,75,.85)');
+    refPoseReady=true;
+  } else {
+    refLandmarks=null;
   }
-  refCtx.restore();
 }
 
-// User camera pose results — compare against ref, fire cues
-function onUserPoseResults(results){
-  if(!sessionActive) return;
+// ── USER POSE CALLBACK ────────────────────────────────────────────
+function onUserPose(results){
+  if(!sessionActive)return;
   frameCount++;
   document.getElementById('stat-frames').textContent=frameCount;
 
-  userCtx.save();
-  userCtx.clearRect(0,0,userCanvas.width,userCanvas.height);
-  results.image && userCtx.drawImage(results.image,0,0,userCanvas.width,userCanvas.height);
+  uctx.clearRect(0,0,userDraw.width,userDraw.height);
+  if(results.image) uctx.drawImage(results.image,0,0,userDraw.width,userDraw.height);
 
   if(!results.poseLandmarks){
     setStatus('No pose','error-state');
-    return userCtx.restore();
+    return;
   }
 
   const lm=results.poseLandmarks;
-  drawSkeleton(userCtx,userCanvas,lm,'rgba(200,240,75,.9)');
+  drawSkeleton(uctx,userDraw,lm,'rgba(68,255,136,.65)','rgba(68,255,136,.9)');
 
-  // Calibration phase — build user baseline from their own standing position
+  // CALIBRATION — collect baseline from user's neutral position
   if(!baselineReady){
     baselineFrames++;
-    setStatus('Calibrating '+Math.min(100,Math.round(baselineFrames/BASELINE_FRAMES*100))+'%','active');
+    const pct=Math.min(100,Math.round(baselineFrames/BASELINE_FRAMES*100));
+    document.getElementById('cal-bar').style.width=pct+'%';
+    setStatus('Calibrating '+pct+'%','active');
     baselineFrames===1
-      ? userBaseline=lm.map(p=>({...p}))
-      : userBaseline=userBaseline.map((b,i)=>({x:b.x*.9+lm[i].x*.1,y:b.y*.9+lm[i].y*.1,z:b.z*.9+lm[i].z*.1,visibility:lm[i].visibility}));
+      ? baselineLandmarks=lm.map(p=>({...p}))
+      : baselineLandmarks=baselineLandmarks.map((b,i)=>({
+          x:b.x*.85+lm[i].x*.15, y:b.y*.85+lm[i].y*.15,
+          z:b.z*.85+lm[i].z*.15, visibility:lm[i].visibility
+        }));
     if(baselineFrames>=BASELINE_FRAMES){
       baselineReady=true;
-      setStatus('Monitoring','active');
-      addLog('Calibrated. Now squat along with the instructor — cues will fire when your form drifts.','system');
+      document.getElementById('cal-overlay').classList.add('hide');
+      addLog('Baseline set. Now comparing vs instructor.','system');
     }
-    return userCtx.restore();
+    return;
   }
 
-  // Compare user against reference video pose (if available) OR their own baseline
-  const compareTarget = refLandmarks || userBaseline;
+  // COMPARISON — use instructor landmarks if available, else baseline
+  const target=refLandmarks||baselineLandmarks;
+  const usingRef=!!refLandmarks;
   const threshold=parseFloat(document.getElementById('threshold').value);
-  const deviation=computeDeviation(lm, compareTarget);
+  const deviation=computeDeviation(lm,target);
 
-  updateDevUI(deviation,threshold);
+  updateDevUI(deviation,threshold,usingRef);
 
   if(deviation>threshold){
     deviationStreak++;
     if(Date.now()-lastCueTime>COOLDOWN_MS && deviationStreak>=DEVIATION_FRAMES && !isSpeaking){
-      lastCueTime=Date.now();
-      deviationStreak=0;
-      fireCue(lm, deviation);
+      lastCueTime=Date.now();deviationStreak=0;
+      fireCue(lm,deviation,target,usingRef);
     }
   } else {
     deviationStreak=Math.max(0,deviationStreak-1);
   }
-
-  userCtx.restore();
 }
 
+// ── GEOMETRY ──────────────────────────────────────────────────────
 function getAngle(lm,indices){
   const pts=indices.map(i=>lm[i]);
-  if(pts.some(p=>!p||(p.visibility||0)<.4)) return null;
-  const[a,b,c]=pts, v1={x:a.x-b.x,y:a.y-b.y}, v2={x:c.x-b.x,y:c.y-b.y};
-  const dot=v1.x*v2.x+v1.y*v2.y, mag=Math.sqrt(v1.x**2+v1.y**2)*Math.sqrt(v2.x**2+v2.y**2);
+  if(pts.some(p=>!p||(p.visibility||0)<.35))return null;
+  const[a,b,c]=pts;
+  const v1={x:a.x-b.x,y:a.y-b.y},v2={x:c.x-b.x,y:c.y-b.y};
+  const dot=v1.x*v2.x+v1.y*v2.y;
+  const mag=Math.sqrt(v1.x**2+v1.y**2)*Math.sqrt(v2.x**2+v2.y**2);
   return mag===0?null:Math.acos(Math.min(1,Math.max(-1,dot/mag)));
 }
 
 function computeDeviation(cur,ref){
   let total=0,count=0;
   JOINT_DEFS.forEach(j=>{
-    if(activeJoints.has(j.id)){
-      const a1=getAngle(cur,j.landmarks), a2=getAngle(ref,j.landmarks);
-      if(a1!==null&&a2!==null){total+=Math.abs(a1-a2)/Math.PI; count++;}
-    }
+    if(!activeJoints.has(j.id))return;
+    const a1=getAngle(cur,j.lm),a2=getAngle(ref,j.lm);
+    if(a1!==null&&a2!==null){total+=Math.abs(a1-a2)/Math.PI;count++;}
   });
   return count>0?total/count:0;
 }
 
 function worstJoint(cur,ref){
-  let worst=null, worstDev=-1;
+  let worst=null,worstD=-1;
   JOINT_DEFS.forEach(j=>{
-    if(activeJoints.has(j.id)){
-      const a1=getAngle(cur,j.landmarks), a2=getAngle(ref,j.landmarks);
-      if(a1!==null&&a2!==null){const d=Math.abs(a1-a2)/Math.PI; if(d>worstDev){worstDev=d;worst=j;}}
-    }
+    if(!activeJoints.has(j.id))return;
+    const a1=getAngle(cur,j.lm),a2=getAngle(ref,j.lm);
+    if(a1!==null&&a2!==null){const d=Math.abs(a1-a2)/Math.PI;if(d>worstD){worstD=d;worst=j;}}
   });
   return worst?worst.label:'overall posture';
 }
 
-async function fireCue(lm,deviation){
-  cueCount++;
-  document.getElementById('stat-cues').textContent=cueCount;
-  const target=refLandmarks||userBaseline;
-  const joint=worstJoint(lm,target), pct=Math.round(deviation*100);
-  addLog('Deviation '+pct+'% on '+joint+' — generating cue...','system');
+// ── CUE PIPELINE ──────────────────────────────────────────────────
+async function fireCue(lm,deviation,target,usingRef){
+  cueCount++;document.getElementById('stat-cues').textContent=cueCount;
+  const joint=worstJoint(lm,target),pct=Math.round(deviation*100);
+  addLog((usingRef?'📹 vs Instructor ':'📐 vs Baseline ')+pct+'% — '+joint,'system');
   let cueText;
-  try{cueText=await generateCue(joint,pct);}
-  catch(e){return addLog('Claude error: '+e.message,'error'), void(isSpeaking=false);}
+  try{cueText=await generateCue(joint,pct,usingRef);}
+  catch(e){addLog('Claude error: '+e.message,'error');isSpeaking=false;return;}
   const logEl=addLog('"'+cueText+'"','speaking');
   try{await speakCue(cueText,logEl);}
-  catch(e){addLog('TTS error: '+e.message,'error'); logEl.classList.replace('speaking','coaching'); isSpeaking=false;}
+  catch(e){addLog('TTS error: '+e.message,'error');logEl.classList.replace('speaking','coaching');isSpeaking=false;}
 }
 
-async function generateCue(joint,pct){
-  const usingRef=!!refLandmarks;
-  const context=usingRef
-    ? 'You are watching a person squat alongside a reference instructor video. Their '+joint+' is '+pct+'% off from the instructor.'
-    : 'The users '+joint+' is '+pct+'% off their baseline position.';
+async function generateCue(joint,pct,vsInstructor){
+  const context=vsInstructor
+    ?`The user's ${joint} angle is ${pct}% different from the instructor's current position in the squat video.`
+    :`The user's ${joint} is ${pct}% off their neutral baseline.`;
   const res=await fetch('https://api.anthropic.com/v1/messages',{
     method:'POST',
     headers:{'Content-Type':'application/json','x-api-key':window._ak,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-    body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:80,
-      system:'You are a calm encouraging British female fitness coach. Keep cues SHORT — max 10 words. Direct and specific. No filler. Examples: Keep your knees over your toes. Chest up, back straight.',
-      messages:[{role:'user',content:context+' Give one short corrective cue.'}]})
+    body:JSON.stringify({
+      model:'claude-sonnet-4-20250514',max_tokens:80,
+      system:'You are a calm encouraging British female fitness coach. Keep cues SHORT — max 10 words. Direct, specific, no filler. Examples: Keep your back flat. Drive through your heels. Chest up.',
+      messages:[{role:'user',content:context+' Give one short corrective cue.'}]
+    })
   });
-  if(!res.ok){const e=await res.json(); throw new Error(e.error?.message||res.statusText);}
+  if(!res.ok){const e=await res.json();throw new Error(e.error?.message||res.statusText);}
   return(await res.json()).content[0].text.trim().replace(/^["']|["']$/g,'');
 }
 
@@ -432,7 +519,6 @@ async function speakCue(text,logEl){
   isSpeaking=true;
   document.getElementById('voice-indicator').classList.add('show');
   document.getElementById('alert-overlay').classList.add('warn');
-
   const res=await fetch('https://api.elevenlabs.io/v1/text-to-speech/'+voiceId+'/stream',{
     method:'POST',
     headers:{'Content-Type':'application/json','xi-api-key':window._ek},
@@ -442,13 +528,12 @@ async function speakCue(text,logEl){
     isSpeaking=false;
     document.getElementById('voice-indicator').classList.remove('show');
     document.getElementById('alert-overlay').classList.remove('warn');
-    const e=await res.json(); throw new Error(e.detail?.message||res.statusText);
+    const e=await res.json();throw new Error(e.detail?.message||res.statusText);
   }
-  const audioCtx=sharedAudioCtx;
-  if(audioCtx.state==='suspended') await audioCtx.resume();
-  const buf=await audioCtx.decodeAudioData(await res.arrayBuffer());
-  const src=audioCtx.createBufferSource();
-  src.buffer=buf; src.connect(audioCtx.destination);
+  if(sharedAudioCtx.state==='suspended') await sharedAudioCtx.resume();
+  const buf=await sharedAudioCtx.decodeAudioData(await res.arrayBuffer());
+  const src=sharedAudioCtx.createBufferSource();
+  src.buffer=buf;src.connect(sharedAudioCtx.destination);
   src.onended=()=>{
     isSpeaking=false;
     document.getElementById('voice-indicator').classList.remove('show');
@@ -458,44 +543,53 @@ async function speakCue(text,logEl){
   src.start(0);
 }
 
-function drawSkeleton(ctx,canvas,lm,colour){
-  ctx.lineWidth=2; ctx.strokeStyle=colour; ctx.fillStyle=colour;
+// ── DRAWING ───────────────────────────────────────────────────────
+function drawSkeleton(ctx,canvas,lm,lineColor,dotColor){
+  ctx.lineWidth=2;ctx.strokeStyle=lineColor;ctx.fillStyle=dotColor;
   CONNECTIONS.forEach(([a,b])=>{
     const pa=lm[a],pb=lm[b];
-    if(!pa||!pb||(pa.visibility||0)<.4||(pb.visibility||0)<.4) return;
-    ctx.beginPath(); ctx.moveTo(pa.x*canvas.width,pa.y*canvas.height);
-    ctx.lineTo(pb.x*canvas.width,pb.y*canvas.height); ctx.stroke();
+    if(!pa||!pb||(pa.visibility||0)<.35||(pb.visibility||0)<.35)return;
+    ctx.beginPath();
+    ctx.moveTo(pa.x*canvas.width,pa.y*canvas.height);
+    ctx.lineTo(pb.x*canvas.width,pb.y*canvas.height);
+    ctx.stroke();
   });
   lm.forEach((p,i)=>{
-    if(FACE_LM.has(i)) return; // skip face dots
-    if((p.visibility||0)<.4) return;
-    ctx.beginPath(); ctx.arc(p.x*canvas.width,p.y*canvas.height,4,0,Math.PI*2); ctx.fill();
+    if(FACE_LM.has(i)||(p.visibility||0)<.35)return;
+    ctx.beginPath();ctx.arc(p.x*canvas.width,p.y*canvas.height,4,0,Math.PI*2);ctx.fill();
   });
 }
 
-function updateDevUI(dev,threshold){
-  const pct=Math.round(dev*100), badge=document.getElementById('deviation-badge');
-  badge.classList.add('show'); badge.textContent=pct+'%';
+// ── UI HELPERS ────────────────────────────────────────────────────
+function updateDevUI(dev,threshold,usingRef){
+  const pct=Math.round(dev*100);
+  const badge=document.getElementById('deviation-badge');
+  badge.classList.add('show');badge.textContent=pct+'%';
   document.getElementById('stat-dev').textContent=pct+'%';
   const cls=dev>threshold?'danger':dev>threshold*.7?'warn':'good';
   badge.className='show '+cls;
   document.getElementById('alert-overlay').className=dev>threshold?'danger':dev>threshold*.7?'warn':'';
-  setStatus(dev>threshold?'Deviation!':'Form good',dev>threshold?'warning':'active');
+  const label=usingRef?(dev>threshold?'Off instructor':'Matching'):(dev>threshold?'Deviation!':'Form good');
+  setStatus(label,dev>threshold?'warning':'active');
 }
 
-function setStatus(text,cls){const el=document.getElementById('pose-status');el.textContent=text;el.className=cls||'';}
+function setStatus(text,cls){
+  const el=document.getElementById('pose-status');el.textContent=text;el.className=cls||'';
+}
 
 function addLog(msg,type='coaching'){
   const log=document.getElementById('coaching-log'),empty=document.getElementById('log-empty');
   empty&&empty.remove();
-  const time=new Date().toTimeString().split(' ')[0], entry=document.createElement('div');
+  const time=new Date().toTimeString().split(' ')[0];
+  const entry=document.createElement('div');
   entry.className='log-entry '+type;
   entry.innerHTML='<div class="log-time">'+time+'</div>'+msg;
-  log.appendChild(entry); log.scrollTop=log.scrollHeight; return entry;
+  log.appendChild(entry);log.scrollTop=log.scrollHeight;
+  return entry;
 }
 
 function updateTimer(){
-  if(!sessionStart) return;
+  if(!sessionStart)return;
   const s=Math.floor((Date.now()-sessionStart)/1000);
   document.getElementById('stat-time').textContent=Math.floor(s/60)+':'+(s%60).toString().padStart(2,'0');
 }
